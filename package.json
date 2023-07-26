@@ -1,21 +1,30 @@
 {
   "name": "koishi-plugin-word-cloud",
-  "description": "",
-  "version": "0.0.1",
+  "description": "词云插件，适用于所有有 guildId 的平台",
+  "version": "0.1.0",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
     "lib",
     "dist"
   ],
-  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ahdg6/koishi-plugin-word-cloud.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ahdg6/koishi-plugin-word-cloud/issues"
+  },
+  "license": "AGPL-3.0-or-later",
   "scripts": {},
   "keywords": [
-    "chatbot",
+    "word",
     "koishi",
     "plugin"
   ],
   "peerDependencies": {
-    "koishi": "^4.13.6"
+    "koishi": "^4.13.6",
+    "koishi-plugin-jieba": "^0.1.0",
+    "koishi-plugin-puppeteer": "^3.4.11"
   }
 }
