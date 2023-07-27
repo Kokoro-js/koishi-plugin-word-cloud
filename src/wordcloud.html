@@ -8,7 +8,7 @@
     }
     #chart {
       width: 100%;
-      height: 100%;
+      height: 85%;
       position: relative;
     }
   </style>
@@ -46,14 +46,7 @@
     shadowBlur: 1,
     shadowColor: 'rgba(0,0,0,0)',
     maskImage: ${postMaskImagine},
-    backgroundColor: 'rgba(0,0,0,0)',
-    click: function(item, params, evet, index) {
-      wordCloud.dispatchAction({
-        type: 'highlight', // highlight或downplay
-        dataIndex: index, // 高亮数据索引
-        keepAlive: true, // 高亮词是否唯一，false即同时只能高亮一个词
-      })
-    }
+    backgroundColor: 'rgba(0,0,0,0)'
   })
 </script>
 </body>

@@ -1,10 +1,10 @@
-import {Context, Database, DatabaseService, Schema} from 'koishi'
+import {Context, DatabaseService, Schema} from 'koishi'
 import {} from 'koishi-plugin-jieba'
 import {} from 'koishi-plugin-puppeteer'
 import {readFileSync} from "fs";
 
 export const name = 'word-cloud'
-export const using = ['puppeteer']
+export const using = ['puppeteer', 'jieba']
 
 export interface Config {
   maskImg: string
@@ -31,7 +31,7 @@ export function apply(ctx: Context, config: Config) {
     guildId: 'string',
     date: 'date',
     words: 'string'
-  }, { primary: 'guildId', unique: ['date', 'guildId'],})
+  }, { primary: 'guildId'})
 
   let wordCounterMap = new Map<string, WordFrequencyCounter>();
   const templateHtmlPath = __dirname + "/wordcloud.html";
