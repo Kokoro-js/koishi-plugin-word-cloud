@@ -1,37 +1,56 @@
-import {Context, DatabaseService, Schema} from 'koishi'
-import {} from 'koishi-plugin-jieba'
-import {} from 'koishi-plugin-puppeteer'
-import {readFileSync} from "fs";
+import { Context, DatabaseService, h, Schema } from "koishi";
+import {} from "koishi-plugin-jieba";
+import {} from "koishi-plugin-puppeteer";
+import {} from "koishi-plugin-skia-canvas";
+import createWordCloud from "./wordcloud.js";
+import { readFileSync } from "fs";
+import dayjs from "dayjs";
 
-export const name = 'word-cloud'
-export const using = ['puppeteer', 'jieba']
+export const name = "word-cloud";
+export const using = ["jieba"];
 
 export interface Config {
-  maskImg: string
+  maskImg: string;
+  canvas: boolean;
+  width: number;
+  height: number;
 }
 
-declare module 'koishi' {
+declare module "koishi" {
   interface Tables {
-    wordStats: WordStats
+    wordStats: WordStats;
   }
 }
 
 export interface WordStats {
-  guildId: string
-  date: Date
-  words: string
+  guildId: string;
+  date: Date;
+  words: any;
 }
 
 export const Config: Schema<Config> = Schema.object({
-  maskImg: Schema.string().description('词云用的遮罩图片').default('https://s2.loli.net/2023/07/26/blf6dONKDMrch5a.png')
-})
+  maskImg: Schema.string()
+    .description("完整词云用的遮罩图片")
+    .default("https://s2.loli.net/2023/07/26/blf6dONKDMrch5a.png"),
+  canvas: Schema.boolean()
+    .default(true)
+    .description(
+      "cloud 命令是否默认使用 Canvas，启用则需要 --full 来渲染完整图",
+    ),
+  width: Schema.natural().default(800).description("Canvas 宽度"),
+  height: Schema.natural().default(800).description("Canvas 高度"),
+});
 
 export function apply(ctx: Context, config: Config) {
-  ctx.model.extend('wordStats', {
-    guildId: 'string',
-    date: 'date',
-    words: 'string'
-  }, { primary: 'guildId'})
+  ctx.model.extend(
+    "wordStats",
+    {
+      guildId: "string",
+      date: "date",
+      words: "json",
+    },
+    { primary: "guildId" },
+  );
 
   let wordCounterMap = new Map<string, WordFrequencyCounter>();
   const templateHtmlPath = __dirname + "/wordcloud.html";
@@ -39,8 +58,9 @@ export function apply(ctx: Context, config: Config) {
 
   ctx.on("message", async (session) => {
     if (!session.guildId || session.selfId == session.userId) return;
-    // 对消息预处理，避免出现奇特字符让 puppeteer 无法工作
-    const preprocessText = session.content.replace(/\n/g, ' ')
+    const preprocessText = h
+      .transform(session.content, { text: true, default: false })
+      .replace(/\n/g, " ");
     const content = ctx.jieba.cut(preprocessText);
 
     let wordCounter = wordCounterMap.get(session.guildId);
@@ -51,89 +71,128 @@ export function apply(ctx: Context, config: Config) {
     // Update the word frequency
     wordCounter.increment(content);
 
-    const today = new Date().getDate()
+    const today = WordFrequencyCounter.getToday();
     // Check if need to save data and reset
-    if (today != wordCounter.date.getDate()) {
+    if (today.getDate() != wordCounter.date.getDate()) {
       await wordCounter.doSave(ctx.database);
     }
   });
 
   ctx.on("dispose", () => {
-    wordCounterMap.forEach(e => e.doSave(ctx.database))
-  })
+    wordCounterMap.forEach((e) => e.doSave(ctx.database));
+  });
 
-  ctx.command('cloud').option('week', '-w')
-    .option('guild', '<guild:string>')
-    .action(async ({options, session}) => {
-      let guildId = options.guild || session.guildId
-      if (!guildId) return '在非群组中使用应指定 guildId'
-      const wordCounter = wordCounterMap.get(guildId)
-      if (!wordCounter) return '未记录数据'
+  ctx
+    .command("cloud")
+    .option("week", "-w")
+    .option("fast", "-f", { fallback: config.canvas })
+    .option("fast", "--full", { value: false })
+    .option("guild", "<guild:string>")
+    .action(async ({ options, session }) => {
+      let guildId = options.guild || session.guildId;
+      if (!guildId) return "在非群组中使用应指定 guildId";
+      const wordCounter = wordCounterMap.get(guildId);
+      if (!wordCounter) return "未记录数据";
       let wordsCache: Map<string, number> = wordCounter.wordFrequency;
 
       // 按选项对词云追溯范围作分别
-      let dateExp, title = `${session.platform} - ${guildId} `;
+      let dateExp,
+        title = `${session.platform} - ${guildId} `;
+
+      const day = dayjs(wordCounter.date);
       if (options.week) {
-        let time = wordCounter.date.getTime() - 7 * 24 * 60 * 60 * 1000
-        let newDate = new Date(time)
-        dateExp = {$gte: newDate}
-        title += `${newDate.toISOString().split('T')[0]} - ${wordCounter.date.toISOString().split('T')[0]}`
+        let oneWeekAgo = day.subtract(1, "week");
+        dateExp = { $gte: oneWeekAgo.toDate() };
+        title += `${oneWeekAgo.format("YYYY-MM-DD")} - ${day.format(
+          "YYYY-MM-DD",
+        )}`;
       } else {
-        dateExp = { $eq: wordCounter.date }
-        title += wordCounter.date.toISOString().split('T')[0]
+        dateExp = { $eq: wordCounter.date };
+        title += day.format("YYYY-MM-DD");
       }
 
       // 数据库操作
-      const oldData = await ctx.database.get('wordStats', {
-        $and: [
-          {guildId: [guildId]},
-          { date: dateExp }
-        ]
-      }, ['words'])
+      const oldData = await ctx.database.get(
+        "wordStats",
+        {
+          $and: [{ guildId: [guildId] }, { date: dateExp }],
+        },
+        ["words"],
+      );
 
       if (oldData.length != 0) {
-        wordsCache = mergeCountMaps([convertData(oldData), wordsCache])
+        const old: Array<[string, number]> = oldData.flatMap((item) =>
+          JSON.parse(item.words),
+        );
+        wordsCache = mergeCountMaps([arrayToMap(old), wordsCache]);
       }
 
-      return (await ctx.puppeteer.render(templateHtml
-        .replace('${title}', title)
-        .replace('${wordsArray}', JSON.stringify(Array.from(wordsCache.entries())))
-        .replace('${postMaskImagine}', `'${config.maskImg}'`)))
-  })
+      const list = Array.from(wordsCache.entries());
 
-  ctx.command('wordclear')
-    .option('min', '<min:Date>').option('max', '<max:Date>')
-    .option('guild', '<guild:string>')
-    .action(async ({options, session}) => {
-      let guildId = options.guild || session.guildId
-      if (!guildId) return '在非群组中使用应指定 guildId'
-      let dateExp: any = {
-        ...options.min ? {$gte: options.min} : {},
-        ...options.max ? {$lte: options.max} : {},
+      if (options.fast && ctx.canvas) {
+        const WordCloud = createWordCloud(ctx.canvas.createCanvas(1000, 1000));
+        const colorPanel = [
+          "#54b399",
+          "#6092c0",
+          "#d36086",
+          "#9170b8",
+          "#ca8eae",
+          "#d6bf57",
+          "#b9a888",
+          "#da8b45",
+          "#aa6556",
+          "#e7664c",
+        ];
+        const options = {
+          gridSize: 8, // 设置网格大小，默认为8
+          rotationRange: [-70, 70], // 设置旋转范围，默认为 [-70, 70]
+          backgroundColor: "#fff", // 设置背景颜色，默认为 rgba(255,0,0,0.3)
+          sizeRange: [24, 70], // 设置字体大小范围，默认为 [16, 68]
+          color: function (word, weight) {
+            // 字体颜色（非必需，这里会为词汇随机挑选一种 colorPanel 中的颜色）
+            return colorPanel[Math.floor(Math.random() * colorPanel.length)];
+          },
+          fontWeight: "bold", // 字体粗细，默认为 'normal'
+          fontFamily: `${ctx.canvas.getPresetFont()}`,
+          shape: "square", // 字体形状，默认为 'circle'
+        };
+        const canvas = ctx.canvas.createCanvas(config.width, config.height);
+        const wordcloud = WordCloud(canvas, { list, ...options });
+        wordcloud.draw();
+        return h.image(canvas.toBuffer("image/png"), "image/png");
       }
-      if (Object.keys(dateExp).length === 0) {
-        const time = new Date()
-        time.setHours(0, 0, 0, 0)
-        dateExp = { $eq: time }
-      }
-      await ctx.database.remove('wordStats', {
-        $and: [
-          {guildId: [guildId]},
-          { date: dateExp }
-        ]
-      })
-  })
-}
 
-function convertData(data: { words: string }[]): Map<string, number> {
-  const result = new Map<string, number>();
-  for (const item of data) {
-    const parsedData: any[][] = JSON.parse(item.words);
-    parsedData.forEach(([key, value]) => {
-      result.set(key, value);
+      if (ctx.puppeteer) {
+        return await ctx.puppeteer.render(
+          templateHtml
+            .replace("${title}", title)
+            .replace("${wordsArray}", JSON.stringify(list))
+            .replace("${postMaskImagine}", `'${config.maskImg}'`),
+        );
+      }
     });
-  }
-  return result;
+
+  ctx
+    .command("wordclear")
+    .option("min", "<min:Date>")
+    .option("max", "<max:Date>")
+    .option("guild", "<guild:string>")
+    .action(async ({ options, session }) => {
+      let guildId = options.guild || session.guildId;
+      if (!guildId) return "在非群组中使用应指定 guildId";
+      let dateExp: any = {
+        ...(options.min ? { $gte: options.min } : {}),
+        ...(options.max ? { $lte: options.max } : {}),
+      };
+      if (Object.keys(dateExp).length === 0) {
+        const time = new Date();
+        time.setHours(0, 0, 0, 0);
+        dateExp = { $eq: time };
+      }
+      await ctx.database.remove("wordStats", {
+        $and: [{ guildId: [guildId] }, { date: dateExp }],
+      });
+    });
 }
 
 class WordFrequencyCounter {
@@ -144,46 +203,62 @@ class WordFrequencyCounter {
 
   constructor(guildId: string) {
     this.wordFrequency = new Map<string, number>();
-    this.date = this.getToday()
+    this.date = WordFrequencyCounter.getToday();
     this.guildId = guildId;
     this.hasSaved = false;
   }
 
   increment(words: string[]) {
-    for (const word of words) {
+    for (let word of words) {
+      if (word == " ") return;
       this.wordFrequency.set(word, (this.wordFrequency.get(word) || 0) + 1);
     }
     this.hasSaved = false;
   }
 
-  getToday() {
-    const time = new Date()
-    time.setHours(0, 0, 0, 0)
-    return time
+  static getToday() {
+    const now = dayjs();
+    return now.startOf("day").toDate();
   }
 
   async doSave(database: DatabaseService) {
-    let data = this.wordFrequency
-    const oldData = (await database.get('wordStats', {
-      $and: [
-        {guildId: [this.guildId]},
-        { date: { $eq: this.date } },
-      ]
-    }, ['words']))
+    let data = this.wordFrequency;
+    const oldData = await database.get(
+      "wordStats",
+      {
+        $and: [{ guildId: [this.guildId] }, { date: { $eq: this.date } }],
+      },
+      ["words"],
+    );
     if (oldData.length != 0) {
-      data = mergeCountMaps([convertData(oldData), data])
+      const old: Array<[string, number]> = oldData.flatMap((item) =>
+        JSON.parse(item.words),
+      );
+      data = mergeCountMaps([arrayToMap(old), data]);
     }
     try {
-      await database.upsert('wordStats', [
-        {guildId: this.guildId, date: this.date, words: JSON.stringify(Array.from(data.entries()))}
-      ])
+      await database.upsert("wordStats", [
+        {
+          guildId: this.guildId,
+          date: this.date,
+          words: JSON.stringify(Array.from(data.entries())),
+        },
+      ]);
       this.wordFrequency.clear();
-      this.date = this.getToday()
+      this.date = WordFrequencyCounter.getToday();
       this.hasSaved = true;
     } catch (e) {
-      console.error(e)
+      console.error(e);
     }
   }
+}
+
+function arrayToMap(arr: [string, number][]) {
+  let map = new Map<string, number>();
+  for (const [key, value] of arr) {
+    map.set(key, (map.get(key) || 0) + value);
+  }
+  return map;
 }
 
 function mergeCountMaps(maps: Map<string, number>[]) {
