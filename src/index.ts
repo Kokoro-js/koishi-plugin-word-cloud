@@ -84,7 +84,7 @@ export function apply(ctx: Context, config: Config) {
 
   ctx
     .command("cloud")
-    .option("week", "-w")
+    .option("term", "<term:string>")
     .option("fast", "-f", { fallback: config.canvas })
     .option("fast", "--full", { value: false })
     .option("guild", "<guild:string>")
@@ -100,10 +100,19 @@ export function apply(ctx: Context, config: Config) {
         title = `${session.platform} - ${guildId} `;
 
       const day = dayjs(wordCounter.date);
-      if (options.week) {
-        let oneWeekAgo = day.subtract(1, "week");
-        dateExp = { $gte: oneWeekAgo.toDate() };
-        title += `${oneWeekAgo.format("YYYY-MM-DD")} - ${day.format(
+      if (options.term) {
+        const regex = /^(\d+)([dw])$/;
+        const match = options.term.match(regex);
+        const value = parseInt(match[1]);
+        if (
+          isNaN(value) ||
+          !(match[2] in ["d", "D", "M", "y", "h", "m", "s", "ms"])
+        )
+          return "传入的参数不对";
+
+        let pendingAgo = day.subtract(value, match[2] as any);
+        dateExp = { $gte: pendingAgo.toDate() };
+        title += `${pendingAgo.format("YYYY-MM-DD")} - ${day.format(
           "YYYY-MM-DD",
         )}`;
       } else {

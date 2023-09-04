@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-word-cloud",
   "description": "词云插件，适用于所有有 guildId 的平台",
-  "version": "0.4.0",
+  "version": "0.4.2",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
@@ -23,7 +23,7 @@
   ],
   "peerDependencies": {
     "koishi": "^4.13.6",
-    "koishi-plugin-jieba": "^0.2.0",
+    "koishi-plugin-jieba": "^0.3.0",
     "koishi-plugin-puppeteer": "^3.4.11",
     "koishi-plugin-skia-canvas": "^0.2.1"
   },
