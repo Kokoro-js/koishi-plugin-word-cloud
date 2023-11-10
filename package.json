@@ -22,12 +22,12 @@
     "plugin"
   ],
   "peerDependencies": {
-    "koishi": "^4.13.6",
+    "koishi": "^4.15.0",
     "koishi-plugin-jieba": "^0.3.0",
-    "koishi-plugin-puppeteer": "^3.4.11",
-    "koishi-plugin-skia-canvas": "^0.2.1"
+    "koishi-plugin-puppeteer": "^3.7.0",
+    "koishi-plugin-skia-canvas": "^0.3.6"
   },
   "dependencies": {
-    "dayjs": "^1.11.9"
+    "dayjs": "^1.11.10"
   }
 }

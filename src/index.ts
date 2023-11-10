@@ -7,7 +7,7 @@ import { readFileSync } from "fs";
 import dayjs from "dayjs";
 
 export const name = "word-cloud";
-export const using = ["jieba"];
+export const inject = ["jieba"];
 
 export interface Config {
   maskImg: string;
@@ -81,105 +81,106 @@ export function apply(ctx: Context, config: Config) {
   ctx.on("dispose", () => {
     wordCounterMap.forEach((e) => e.doSave(ctx.database));
   });
+  ctx.inject(["canvas"], (ctx) => {
+    ctx
+      .command("cloud")
+      .option("term", "<term:string>")
+      .option("fast", "-f", { fallback: config.canvas })
+      .option("fast", "--full", { value: false })
+      .option("guild", "<guild:string>")
+      .action(async ({ options, session }) => {
+        logger.info(ctx.canvas.getPresetFont);
+        let guildId = options.guild || session.guildId;
+        if (!guildId) return "在非群组中使用应指定 guildId";
+        const wordCounter = wordCounterMap.get(guildId);
+        if (!wordCounter) return "未记录数据";
+        let wordsCache: Map<string, number> = wordCounter.wordFrequency;
 
-  ctx
-    .command("cloud")
-    .option("term", "<term:string>")
-    .option("fast", "-f", { fallback: config.canvas })
-    .option("fast", "--full", { value: false })
-    .option("guild", "<guild:string>")
-    .action(async ({ options, session }) => {
-      let guildId = options.guild || session.guildId;
-      if (!guildId) return "在非群组中使用应指定 guildId";
-      const wordCounter = wordCounterMap.get(guildId);
-      if (!wordCounter) return "未记录数据";
-      let wordsCache: Map<string, number> = wordCounter.wordFrequency;
+        // 按选项对词云追溯范围作分别
+        let dateExp,
+          title = `${session.platform} - ${guildId} `;
 
-      // 按选项对词云追溯范围作分别
-      let dateExp,
-        title = `${session.platform} - ${guildId} `;
+        const day = dayjs(wordCounter.date);
+        if (options.term) {
+          const regex = /^(\d+)([dw])$/;
+          const match = options.term.match(regex);
+          const value = parseInt(match[1]);
+          if (
+            isNaN(value) ||
+            !(match[2] in ["d", "D", "M", "y", "h", "m", "s", "ms"])
+          )
+            return "传入的参数不对";
 
-      const day = dayjs(wordCounter.date);
-      if (options.term) {
-        const regex = /^(\d+)([dw])$/;
-        const match = options.term.match(regex);
-        const value = parseInt(match[1]);
-        if (
-          isNaN(value) ||
-          !(match[2] in ["d", "D", "M", "y", "h", "m", "s", "ms"])
-        )
-          return "传入的参数不对";
+          let pendingAgo = day.subtract(value, match[2] as any);
+          dateExp = { $gte: pendingAgo.toDate() };
+          title += `${pendingAgo.format("YYYY-MM-DD")} - ${day.format(
+            "YYYY-MM-DD",
+          )}`;
+        } else {
+          dateExp = { $eq: wordCounter.date };
+          title += day.format("YYYY-MM-DD");
+        }
 
-        let pendingAgo = day.subtract(value, match[2] as any);
-        dateExp = { $gte: pendingAgo.toDate() };
-        title += `${pendingAgo.format("YYYY-MM-DD")} - ${day.format(
-          "YYYY-MM-DD",
-        )}`;
-      } else {
-        dateExp = { $eq: wordCounter.date };
-        title += day.format("YYYY-MM-DD");
-      }
-
-      // 数据库操作
-      const oldData = await ctx.database.get(
-        "wordStats",
-        {
-          $and: [{ guildId: [guildId] }, { date: dateExp }],
-        },
-        ["words"],
-      );
-
-      if (oldData.length != 0) {
-        const old: Array<[string, number]> = oldData.flatMap((item) =>
-          JSON.parse(item.words),
-        );
-        wordsCache = mergeCountMaps([arrayToMap(old), wordsCache]);
-      }
-
-      const list = Array.from(wordsCache.entries());
-
-      if (options.fast && ctx.canvas) {
-        const WordCloud = createWordCloud(ctx.canvas.createCanvas(1000, 1000));
-        const colorPanel = [
-          "#54b399",
-          "#6092c0",
-          "#d36086",
-          "#9170b8",
-          "#ca8eae",
-          "#d6bf57",
-          "#b9a888",
-          "#da8b45",
-          "#aa6556",
-          "#e7664c",
-        ];
-        const options = {
-          gridSize: 8, // 设置网格大小，默认为8
-          rotationRange: [-70, 70], // 设置旋转范围，默认为 [-70, 70]
-          backgroundColor: "#fff", // 设置背景颜色，默认为 rgba(255,0,0,0.3)
-          sizeRange: [24, 70], // 设置字体大小范围，默认为 [16, 68]
-          color: function (word, weight) {
-            // 字体颜色（非必需，这里会为词汇随机挑选一种 colorPanel 中的颜色）
-            return colorPanel[Math.floor(Math.random() * colorPanel.length)];
+        // 数据库操作
+        const oldData = await ctx.database.get(
+          "wordStats",
+          {
+            $and: [{ guildId: [guildId] }, { date: dateExp }],
           },
-          fontWeight: "bold", // 字体粗细，默认为 'normal'
-          fontFamily: `${ctx.canvas.getPresetFont()}`,
-          shape: "square", // 字体形状，默认为 'circle'
-        };
-        const canvas = ctx.canvas.createCanvas(config.width, config.height);
-        const wordcloud = WordCloud(canvas, { list, ...options });
-        wordcloud.draw();
-        return h.image(canvas.toBuffer("image/png"), "image/png");
-      }
-
-      if (ctx.puppeteer) {
-        return await ctx.puppeteer.render(
-          templateHtml
-            .replace("${title}", title)
-            .replace("${wordsArray}", JSON.stringify(list))
-            .replace("${postMaskImagine}", `'${config.maskImg}'`),
+          ["words"],
         );
-      }
-    });
+
+        if (oldData.length != 0) {
+          const old: Array<[string, number]> = oldData.flatMap((item) =>
+            JSON.parse(item.words),
+          );
+          wordsCache = mergeCountMaps([arrayToMap(old), wordsCache]);
+        }
+
+        const list = Array.from(wordsCache.entries());
+
+        if (options.fast && ctx.canvas) {
+          const colorPanel = [
+            "#54b399",
+            "#6092c0",
+            "#d36086",
+            "#9170b8",
+            "#ca8eae",
+            "#d6bf57",
+            "#b9a888",
+            "#da8b45",
+            "#aa6556",
+            "#e7664c",
+          ];
+          const options = {
+            gridSize: 8, // 设置网格大小，默认为8
+            rotationRange: [-70, 70], // 设置旋转范围，默认为 [-70, 70]
+            backgroundColor: "#fff", // 设置背景颜色，默认为 rgba(255,0,0,0.3)
+            sizeRange: [24, 70], // 设置字体大小范围，默认为 [16, 68]
+            color: function (word, weight) {
+              // 字体颜色（非必需，这里会为词汇随机挑选一种 colorPanel 中的颜色）
+              return colorPanel[Math.floor(Math.random() * colorPanel.length)];
+            },
+            fontWeight: "bold", // 字体粗细，默认为 'normal'
+            fontFamily: `${ctx.canvas.getPresetFont()}`,
+            shape: "square", // 字体形状，默认为 'circle'
+          };
+          const canvas = ctx.canvas.createCanvas(config.width, config.height);
+          const wordcloud = createWordCloud(canvas, { list, ...options });
+          wordcloud.draw();
+          return h.image(canvas.toBuffer("image/png"), "image/png");
+        }
+
+        if (ctx.puppeteer) {
+          return await ctx.puppeteer.render(
+            templateHtml
+              .replace("${title}", title)
+              .replace("${wordsArray}", JSON.stringify(list))
+              .replace("${postMaskImagine}", `'${config.maskImg}'`),
+          );
+        }
+      });
+  });
 
   ctx
     .command("wordclear")
