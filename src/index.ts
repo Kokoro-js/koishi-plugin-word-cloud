@@ -5,6 +5,7 @@ import {} from "koishi-plugin-skia-canvas";
 import createWordCloud from "./wordcloud.js";
 import { readFileSync } from "fs";
 import dayjs from "dayjs";
+import { WordFrequencyCounter, arrayToMap, mergeCountMaps } from './counter';
 
 export const name = "word-cloud";
 export const inject = ["jieba"];
@@ -89,7 +90,7 @@ export function apply(ctx: Context, config: Config) {
       .option("fast", "--full", { value: false })
       .option("guild", "<guild:string>")
       .action(async ({ options, session }) => {
-        logger.info(ctx.canvas.getPresetFont);
+        ctx.logger.info(ctx.canvas.getPresetFont);
         let guildId = options.guild || session.guildId;
         if (!guildId) return "在非群组中使用应指定 guildId";
         const wordCounter = wordCounterMap.get(guildId);
@@ -157,7 +158,7 @@ export function apply(ctx: Context, config: Config) {
             rotationRange: [-70, 70], // 设置旋转范围，默认为 [-70, 70]
             backgroundColor: "#fff", // 设置背景颜色，默认为 rgba(255,0,0,0.3)
             sizeRange: [24, 70], // 设置字体大小范围，默认为 [16, 68]
-            color: function (word, weight) {
+            color: function(word, weight) {
               // 字体颜色（非必需，这里会为词汇随机挑选一种 colorPanel 中的颜色）
               return colorPanel[Math.floor(Math.random() * colorPanel.length)];
             },
@@ -203,79 +204,4 @@ export function apply(ctx: Context, config: Config) {
         $and: [{ guildId: [guildId] }, { date: dateExp }],
       });
     });
-}
-
-class WordFrequencyCounter {
-  public wordFrequency: Map<string, number>;
-  public date: Date;
-  public guildId: string;
-  public hasSaved: boolean;
-
-  constructor(guildId: string) {
-    this.wordFrequency = new Map<string, number>();
-    this.date = WordFrequencyCounter.getToday();
-    this.guildId = guildId;
-    this.hasSaved = false;
-  }
-
-  increment(words: string[]) {
-    for (let word of words) {
-      if (word == " ") return;
-      this.wordFrequency.set(word, (this.wordFrequency.get(word) || 0) + 1);
-    }
-    this.hasSaved = false;
-  }
-
-  static getToday() {
-    const now = dayjs();
-    return now.startOf("day").toDate();
-  }
-
-  async doSave(database: DatabaseService) {
-    let data = this.wordFrequency;
-    const oldData = await database.get(
-      "wordStats",
-      {
-        $and: [{ guildId: [this.guildId] }, { date: { $eq: this.date } }],
-      },
-      ["words"],
-    );
-    if (oldData.length != 0) {
-      const old: Array<[string, number]> = oldData.flatMap((item) =>
-        JSON.parse(item.words),
-      );
-      data = mergeCountMaps([arrayToMap(old), data]);
-    }
-    try {
-      await database.upsert("wordStats", [
-        {
-          guildId: this.guildId,
-          date: this.date,
-          words: JSON.stringify(Array.from(data.entries())),
-        },
-      ]);
-      this.wordFrequency.clear();
-      this.date = WordFrequencyCounter.getToday();
-      this.hasSaved = true;
-    } catch (e) {
-      console.error(e);
-    }
-  }
-}
-
-function arrayToMap(arr: [string, number][]) {
-  let map = new Map<string, number>();
-  for (const [key, value] of arr) {
-    map.set(key, (map.get(key) || 0) + value);
-  }
-  return map;
-}
-
-function mergeCountMaps(maps: Map<string, number>[]) {
-  return maps.reduce((acc, currMap) => {
-    for (const [key, value] of currMap.entries()) {
-      acc.set(key, (acc.get(key) || 0) + value);
-    }
-    return acc;
-  }, new Map<string, number>());
 }
