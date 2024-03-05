@@ -5,7 +5,7 @@ import {} from "koishi-plugin-skia-canvas";
 import createWordCloud from "./wordcloud.js";
 import { readFileSync } from "fs";
 import dayjs from "dayjs";
-import { WordFrequencyCounter, arrayToMap, mergeCountMaps } from './counter';
+import { WordFrequencyCounter, arrayToMap, mergeCountMaps } from "./counter";
 
 export const name = "word-cloud";
 export const inject = ["jieba"];
@@ -90,7 +90,6 @@ export function apply(ctx: Context, config: Config) {
       .option("fast", "--full", { value: false })
       .option("guild", "<guild:string>")
       .action(async ({ options, session }) => {
-        ctx.logger.info(ctx.canvas.getPresetFont);
         let guildId = options.guild || session.guildId;
         if (!guildId) return "在非群组中使用应指定 guildId";
         const wordCounter = wordCounterMap.get(guildId);
@@ -141,6 +140,7 @@ export function apply(ctx: Context, config: Config) {
         const list = Array.from(wordsCache.entries());
 
         if (options.fast && ctx.canvas) {
+          const WordCloud = createWordCloud(ctx.canvas.createCanvas(1, 1));
           const colorPanel = [
             "#54b399",
             "#6092c0",
@@ -158,7 +158,7 @@ export function apply(ctx: Context, config: Config) {
             rotationRange: [-70, 70], // 设置旋转范围，默认为 [-70, 70]
             backgroundColor: "#fff", // 设置背景颜色，默认为 rgba(255,0,0,0.3)
             sizeRange: [24, 70], // 设置字体大小范围，默认为 [16, 68]
-            color: function(word, weight) {
+            color: function (word, weight) {
               // 字体颜色（非必需，这里会为词汇随机挑选一种 colorPanel 中的颜色）
               return colorPanel[Math.floor(Math.random() * colorPanel.length)];
             },
@@ -167,7 +167,7 @@ export function apply(ctx: Context, config: Config) {
             shape: "square", // 字体形状，默认为 'circle'
           };
           const canvas = ctx.canvas.createCanvas(config.width, config.height);
-          const wordcloud = createWordCloud(canvas, { list, ...options });
+          const wordcloud = WordCloud(canvas, { list, ...options });
           wordcloud.draw();
           return h.image(canvas.toBuffer("image/png"), "image/png");
         }
