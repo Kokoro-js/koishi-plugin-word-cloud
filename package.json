@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-word-cloud",
   "description": "A word-cloud plugin for Koishi. Skia-Canvas needed.",
-  "version": "0.4.2",
+  "version": "0.4.4",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
