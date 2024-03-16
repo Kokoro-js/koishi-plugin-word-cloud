@@ -43,6 +43,8 @@ export const Config: Schema<Config> = Schema.object({
 });
 
 export function apply(ctx: Context, config: Config) {
+  ctx.i18n.define("zh", require("./locales/zh-CN"));
+
   ctx.model.extend(
     "wordStats",
     {
@@ -85,7 +87,7 @@ export function apply(ctx: Context, config: Config) {
   ctx.inject(["canvas"], (ctx) => {
     ctx
       .command("cloud")
-      .option("term", "<term:string>")
+      .option("term", "-t <term:string>")
       .option("fast", "-f", { fallback: config.canvas })
       .option("fast", "--full", { value: false })
       .option("guild", "<guild:string>")
@@ -107,7 +109,7 @@ export function apply(ctx: Context, config: Config) {
           const value = parseInt(match[1]);
           if (
             isNaN(value) ||
-            !(match[2] in ["d", "D", "M", "y", "h", "m", "s", "ms"])
+            !["d", "D", "w", "M", "y", "h", "m", "s", "ms"].includes(match[2])
           )
             return "传入的参数不对";
 
