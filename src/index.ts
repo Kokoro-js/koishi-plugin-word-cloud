@@ -16,6 +16,7 @@ export interface Config {
   width: number;
   height: number;
   filter: string[];
+  doRemoveSingle: boolean;
 }
 
 declare module "koishi" {
@@ -41,7 +42,11 @@ export const Config: Schema<Config> = Schema.object({
     ),
   width: Schema.natural().default(800).description("Canvas 宽度"),
   height: Schema.natural().default(800).description("Canvas 高度"),
-  filter: Schema.array(String).role("table").default(["了", "的"]),
+  filter: Schema.array(String)
+    .role("table")
+    .default(["了", "的"])
+    .description("过滤不想记录的词"),
+  doRemoveSingle: Schema.boolean().default(false).description("是否移除单字。"),
 });
 
 export function apply(ctx: Context, config: Config) {
@@ -72,6 +77,11 @@ export function apply(ctx: Context, config: Config) {
     if (filter.size !== 0) {
       content = content.filter((word) => !filter.has(word));
     }
+
+    if (config.doRemoveSingle) {
+      content = content.filter((word) => word.length !== 1);
+    }
+
     let wordCounter = wordCounterMap.get(session.guildId);
     if (!wordCounter) {
       wordCounter = new WordFrequencyCounter(session.guildId);
@@ -96,6 +106,7 @@ export function apply(ctx: Context, config: Config) {
       .option("term", "-t <term:string>")
       .option("fast", "-f", { fallback: config.canvas })
       .option("fast", "--full", { value: false })
+      .option("remove", "-r", { fallback: false })
       .option("guild", "<guild:string>")
       .action(async ({ options, session }) => {
         let guildId = options.guild || session.guildId;
@@ -139,13 +150,21 @@ export function apply(ctx: Context, config: Config) {
         );
 
         if (oldData.length != 0) {
-          const old: Array<[string, number]> = oldData.flatMap((item) =>
-            JSON.parse(item.words),
-          );
+          const old: Array<[string, number]> = oldData.flatMap((item) => {
+            try {
+              return JSON.parse(item.words);
+            } catch (e) {
+              return transformToTuples(item.words);
+            }
+          });
           wordsCache = mergeCountMaps([arrayToMap(old), wordsCache]);
         }
 
-        const list = Array.from(wordsCache.entries());
+        let list = Array.from(wordsCache.entries());
+
+        if (options.remove) {
+          list = list.filter(([key]) => key.length !== 1);
+        }
 
         if (options.fast && ctx.canvas) {
           const WordCloud = createWordCloud(ctx.canvas.createCanvas(1, 1));
@@ -212,4 +231,15 @@ export function apply(ctx: Context, config: Config) {
         $and: [{ guildId: [guildId] }, { date: dateExp }],
       });
     });
+}
+
+function transformToTuples(input: string): Array<[string, number]> {
+  const parts = input.split(",");
+  const tuples: Array<[string, number]> = [];
+
+  for (let i = 0; i < parts.length; i += 2) {
+    tuples.push([parts[i], parseInt(parts[i + 1], 10)]);
+  }
+
+  return tuples;
 }

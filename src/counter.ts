@@ -1,5 +1,5 @@
-import dayjs from 'dayjs';
-import { DatabaseService } from 'koishi';
+import dayjs from "dayjs";
+import { DatabaseService } from "koishi";
 
 export class WordFrequencyCounter {
   public wordFrequency: Map<string, number>;
