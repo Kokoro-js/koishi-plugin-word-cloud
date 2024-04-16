@@ -15,6 +15,7 @@ export interface Config {
   canvas: boolean;
   width: number;
   height: number;
+  filter: string[];
 }
 
 declare module "koishi" {
@@ -40,6 +41,7 @@ export const Config: Schema<Config> = Schema.object({
     ),
   width: Schema.natural().default(800).description("Canvas 宽度"),
   height: Schema.natural().default(800).description("Canvas 高度"),
+  filter: Schema.array(String).role("table").default(["了", "的"]),
 });
 
 export function apply(ctx: Context, config: Config) {
@@ -58,14 +60,18 @@ export function apply(ctx: Context, config: Config) {
   let wordCounterMap = new Map<string, WordFrequencyCounter>();
   const templateHtmlPath = __dirname + "/wordcloud.html";
   const templateHtml = readFileSync(templateHtmlPath).toString();
+  const filter = new Set(config.filter);
 
   ctx.on("message", async (session) => {
     if (!session.guildId || session.selfId == session.userId) return;
     const preprocessText = h
       .transform(session.content, { text: true, default: false })
       .replace(/\n/g, " ");
-    const content = ctx.jieba.cut(preprocessText);
+    let content = ctx.jieba.cut(preprocessText);
 
+    if (filter.size !== 0) {
+      content = content.filter((word) => !filter.has(word));
+    }
     let wordCounter = wordCounterMap.get(session.guildId);
     if (!wordCounter) {
       wordCounter = new WordFrequencyCounter(session.guildId);
