@@ -154,7 +154,7 @@ export function apply(ctx: Context, config: Config) {
             try {
               return JSON.parse(item.words);
             } catch (e) {
-              return transformToTuples(item.words);
+              return item.words;
             }
           });
           wordsCache = mergeCountMaps([arrayToMap(old), wordsCache]);
@@ -231,15 +231,4 @@ export function apply(ctx: Context, config: Config) {
         $and: [{ guildId: [guildId] }, { date: dateExp }],
       });
     });
-}
-
-function transformToTuples(input: string): Array<[string, number]> {
-  const parts = input.split(",");
-  const tuples: Array<[string, number]> = [];
-
-  for (let i = 0; i < parts.length; i += 2) {
-    tuples.push([parts[i], parseInt(parts[i + 1], 10)]);
-  }
-
-  return tuples;
 }
