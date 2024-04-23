@@ -37,25 +37,27 @@ export class WordFrequencyCounter {
       ["words"],
     );
     if (oldData.length != 0) {
-      const old: Array<[string, number]> = oldData.flatMap((item) =>
-        JSON.parse(item.words),
-      );
+      const old: Array<[string, number]> = oldData.flatMap((item) => {
+        try {
+          return JSON.parse(item.words);
+        } catch (e) {
+          return item.words;
+        }
+      });
       data = mergeCountMaps([arrayToMap(old), data]);
     }
-    try {
-      await database.upsert("wordStats", [
-        {
-          guildId: this.guildId,
-          date: this.date,
-          words: JSON.stringify(Array.from(data.entries())),
-        },
-      ]);
-      this.wordFrequency.clear();
-      this.date = WordFrequencyCounter.getToday();
-      this.hasSaved = true;
-    } catch (e) {
-      console.error(e);
-    }
+
+    await database.upsert("wordStats", [
+      {
+        guildId: this.guildId,
+        date: this.date,
+        words: JSON.stringify(Array.from(data.entries())),
+      },
+    ]);
+
+    this.wordFrequency.clear();
+    this.date = WordFrequencyCounter.getToday();
+    this.hasSaved = true;
   }
 }
 

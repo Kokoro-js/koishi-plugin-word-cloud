@@ -1,4 +1,4 @@
-import { Context, DatabaseService, h, Schema } from "koishi";
+import { Context, DatabaseService, h, Logger, Schema } from "koishi";
 import {} from "koishi-plugin-jieba";
 import {} from "koishi-plugin-puppeteer";
 import {} from "koishi-plugin-skia-canvas";
@@ -50,6 +50,7 @@ export const Config: Schema<Config> = Schema.object({
 });
 
 export function apply(ctx: Context, config: Config) {
+  const logger = ctx?.logger || new Logger(name);
   ctx.i18n.define("zh", require("./locales/zh-CN"));
 
   ctx.model.extend(
@@ -59,7 +60,7 @@ export function apply(ctx: Context, config: Config) {
       date: "date",
       words: "json",
     },
-    { primary: "guildId" },
+    { primary: ["guildId", "date"] },
   );
 
   let wordCounterMap = new Map<string, WordFrequencyCounter>();
@@ -93,7 +94,11 @@ export function apply(ctx: Context, config: Config) {
     const today = WordFrequencyCounter.getToday();
     // Check if need to save data and reset
     if (today.getDate() != wordCounter.date.getDate()) {
-      await wordCounter.doSave(ctx.database);
+      wordCounter.doSave(ctx.database).catch((e) => {
+        logger.error("存储词频数据遇到错误");
+        this.date = WordFrequencyCounter.getToday();
+        throw e;
+      });
     }
   });
 
@@ -121,12 +126,12 @@ export function apply(ctx: Context, config: Config) {
 
         const day = dayjs(wordCounter.date);
         if (options.term) {
-          const regex = /^(\d+)([dw])$/;
+          const regex = /^(\d+)([dDwMyhms])$/;
           const match = options.term.match(regex);
           const value = parseInt(match[1]);
           if (
             isNaN(value) ||
-            !["d", "D", "w", "M", "y", "h", "m", "s", "ms"].includes(match[2])
+            !["d", "D", "w", "M", "y", "h", "m", "s"].includes(match[2])
           )
             return "传入的参数不对";
 
