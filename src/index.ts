@@ -6,6 +6,7 @@ import createWordCloud from "./wordcloud.js";
 import { readFileSync } from "fs";
 import dayjs from "dayjs";
 import { WordFrequencyCounter, arrayToMap, mergeCountMaps } from "./counter";
+import { removeLinks } from "./helper";
 
 export const name = "word-cloud";
 export const inject = ["jieba"];
@@ -17,6 +18,8 @@ export interface Config {
   height: number;
   filter: string[];
   doRemoveSingle: boolean;
+  doRemoveCommand: boolean;
+  doRemoveLink: boolean;
 }
 
 declare module "koishi" {
@@ -47,6 +50,8 @@ export const Config: Schema<Config> = Schema.object({
     .default(["了", "的"])
     .description("过滤不想记录的词"),
   doRemoveSingle: Schema.boolean().default(false).description("是否移除单字。"),
+  doRemoveCommand: Schema.boolean().default(true).description("是否移除指令。"),
+  doRemoveLink: Schema.boolean().default(true).description("是否移除链接。"),
 });
 
 export function apply(ctx: Context, config: Config) {
@@ -67,12 +72,29 @@ export function apply(ctx: Context, config: Config) {
   const templateHtmlPath = __dirname + "/wordcloud.html";
   const templateHtml = readFileSync(templateHtmlPath).toString();
   const filter = new Set(config.filter);
+  let commandList: string[] = [];
+
+  if (config.doRemoveCommand) {
+    ctx.$commander._commandList.forEach((c) => {
+      commandList.push(c.name);
+      commandList.push(...Object.keys(c._aliases));
+    });
+  }
 
   ctx.on("message", async (session) => {
     if (!session.guildId || session.selfId == session.userId) return;
-    const preprocessText = h
+    let preprocessText = h
       .transform(session.content, { text: true, default: false })
       .replace(/\n/g, " ");
+    if (config.doRemoveCommand) {
+      const isCommand = commandList.some((c) => preprocessText.startsWith(c));
+      if (isCommand) return;
+    }
+
+    if (config.doRemoveLink) {
+      preprocessText = removeLinks(preprocessText);
+    }
+
     let content = ctx.jieba.cut(preprocessText);
 
     if (filter.size !== 0) {
