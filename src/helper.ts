@@ -1,12 +1,11 @@
-export function removeLinks(text: string): string {
-  // 使用正则表达式匹配 URL
-  const urlRegex =
-    /(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?/;
+const URL_REGEX =
+  /(?:(?:(?:https?|ftp):)?\/\/)?(?:(?:[a-z0-9\u00a1-\uffff][a-z0-9\u00a1-\uffff_-]{0,62})?[a-z0-9\u00a1-\uffff]\.)+(?:[a-z\u00a1-\uffff]{2,}\.?)(?::\d{2,5})?(?:[/?#]\S*)?/gi;
 
+export function removeLinks(text: string): string {
   // 循环匹配并替换所有链接
   let cleanedText = text;
   let match;
-  while ((match = urlRegex.exec(cleanedText)) !== null) {
+  while ((match = URL_REGEX.exec(cleanedText)) !== null) {
     cleanedText = cleanedText.replace(match[0], "");
   }
 
