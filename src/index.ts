@@ -14,6 +14,7 @@ export const inject = ["jieba"];
 export interface Config {
   maskImg: string;
   canvas: boolean;
+  canvasMask: any;
   width: number;
   height: number;
   filter: string[];
@@ -43,6 +44,18 @@ export const Config: Schema<Config> = Schema.object({
     .description(
       "cloud 命令是否默认使用 Canvas，启用则需要 --full 来渲染完整图",
     ),
+  canvasMask: Schema.union([
+    "circle",
+    "cardioid",
+    "diamond",
+    "square",
+    "triangle-forward",
+    "triangle",
+    "pentagon",
+    "star",
+  ])
+    .default("square")
+    .description("Canvas 默认使用遮罩"),
   width: Schema.natural().default(800).description("Canvas 宽度"),
   height: Schema.natural().default(800).description("Canvas 高度"),
   filter: Schema.array(String)
@@ -218,7 +231,7 @@ export function apply(ctx: Context, config: Config) {
             },
             fontWeight: "bold", // 字体粗细，默认为 'normal'
             fontFamily: `${ctx.canvas.getPresetFont()}`,
-            shape: "square", // 字体形状，默认为 'circle'
+            shape: config.canvasMask, // 字体形状，默认为 'circle'
           };
           const canvas = ctx.canvas.createCanvas(config.width, config.height);
           const wordcloud = WordCloud(canvas, { list, ...options });
